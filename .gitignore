@@ -1,0 +1,6 @@
+.DS_Store
+
+/* service account keys */
+*.json
+
+testdata/
