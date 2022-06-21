@@ -19,11 +19,11 @@ type FfmpegConfig struct {
 }
 
 // Process uses ffmpeg to convert input path's file according to the specified
-// ffmpeg config provided.
-func Process(path string, config FfmpegConfig) (*Metadata, error) {
+// ffmpeg config provided saving the processed file into dir.
+func Process(path string, dir string, config FfmpegConfig) (*Metadata, error) {
 	fne := path[strings.LastIndex(path, "/")+1:]
 	fn := fne[0 : len(fne)-len(filepath.Ext(fne))]
-	out := fmt.Sprintf("../data/proccessed/%v.%v", fn, config.OutputFormat)
+	out := fmt.Sprintf("%s/%s.%s", fn, config.OutputFormat)
 
 	fluentffmpeg.NewCommand("").
 		InputPath(path).
@@ -43,14 +43,14 @@ func Process(path string, config FfmpegConfig) (*Metadata, error) {
 }
 
 // ProcessBatch concurrently runs Process for a specified slice of input paths.
-func ProcessBatch(in []string, config FfmpegConfig) {
+func ProcessBatch(in []string, dir string, config FfmpegConfig) {
 	// TODO (Jack, 21/06/2022): Switch to output chan of Metadata
 	done := make(chan struct{})
 	for _, s := range in {
-		go func(s string, config FfmpegConfig) {
-			Process(s, config)
+		go func(s, dir string, config FfmpegConfig) {
+			Process(s, dir, config)
 			done <- struct{}{}
-		}(s, config)
+		}(s, dir, config)
 	}
 	<-done
 }

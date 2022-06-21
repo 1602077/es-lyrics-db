@@ -36,6 +36,9 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// w.WriteHeader(http.StatusOK)
+	// fmt.Fprintf(w, "File Uploaded Successfully: %s", handler.Filename)
 }
 
 // Process uploads a file specified using the file tag in curl request through
@@ -51,7 +54,9 @@ func Process(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	inputFile := fmt.Sprintf("../data/uploads/%s", handler.Filename)
+	indir := "../data/uploads"
+	outdir := "../data/processed"
+	inputFile := fmt.Sprintf("%s/%s", indir, handler.Filename)
 
 	ac := audio.FfmpegConfig{
 		OutputFormat: "wav",
@@ -60,7 +65,7 @@ func Process(w http.ResponseWriter, r *http.Request) {
 		BitRate:      160,
 	}
 
-	md, err := audio.Process(inputFile, ac)
+	md, err := audio.Process(inputFile, outdir, ac)
 	if err != nil {
 		log.Printf("err|Process|audio.Process|%s", err)
 		w.WriteHeader(http.StatusBadRequest)
