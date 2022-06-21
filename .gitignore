@@ -3,5 +3,9 @@
 /* service account keys */
 *.json
 
+/* data */
 testdata/
 data/
+
+/* binaries */
+bin/
