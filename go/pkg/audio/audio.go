@@ -23,7 +23,7 @@ type FfmpegConfig struct {
 func Process(path string, dir string, config FfmpegConfig) (*Metadata, error) {
 	fne := path[strings.LastIndex(path, "/")+1:]
 	fn := fne[0 : len(fne)-len(filepath.Ext(fne))]
-	out := fmt.Sprintf("%s/%s.%s", fn, config.OutputFormat)
+	out := fmt.Sprintf("%s/%s.%s", dir, fn, config.OutputFormat)
 
 	fluentffmpeg.NewCommand("").
 		InputPath(path).
@@ -43,26 +43,37 @@ func Process(path string, dir string, config FfmpegConfig) (*Metadata, error) {
 }
 
 // ProcessBatch concurrently runs Process for a specified slice of input paths.
-func ProcessBatch(in []string, dir string, config FfmpegConfig) {
-	// TODO (Jack, 21/06/2022): Switch to output chan of Metadata
-	done := make(chan struct{})
-	for _, s := range in {
-		go func(s, dir string, config FfmpegConfig) {
-			Process(s, dir, config)
-			done <- struct{}{}
+func ProcessBatch(inputFiles []string, dir string, config FfmpegConfig) (Tracks, error) {
+	ch := make(chan *Metadata)
+	errs := make(chan error, 1)
+	for _, s := range inputFiles {
+		go func(s, dir string, cfg FfmpegConfig) {
+			m, err := Process(s, dir, cfg)
+			errs <- err
+			ch <- m
 		}(s, dir, config)
 	}
-	<-done
+
+	var tracks Tracks
+	for range inputFiles {
+		m := <-ch
+		tracks = append(tracks, m)
+	}
+	return tracks, <-errs
 }
 
 type Metadata struct {
-	Artist   string `json:"artist"`
-	Album    string `json:"album"`
-	Title    string `json:"title"`
-	Track    string `json:"track"`
-	Duration string `json:"duration"`
-	Filename string `json:"filename"`
+	Artist      string `json:"artist"`
+	Album       string `json:"album"`
+	Title       string `json:"title"`
+	Track       string `json:"track"`
+	Duration    string `json:"duration"`
+	Filename    string `json:"filename"`
+	Processed   bool   `json:"processed"`
+	Transcribed bool   `json:"transcribed"`
 }
+
+type Tracks []*Metadata
 
 // ProbeMetadata uses a ffmpeg probe to extract music metadata from input path.
 func ProbeMetadata(path string) (*Metadata, error) {
@@ -105,11 +116,12 @@ func ProbeMetadata(path string) (*Metadata, error) {
 	}
 
 	return &Metadata{
-		Artist:   artist,
-		Album:    album,
-		Title:    title,
-		Track:    track,
-		Duration: duration,
+		Artist:    artist,
+		Album:     album,
+		Title:     title,
+		Track:     track,
+		Duration:  duration,
+		Processed: true,
 	}, nil
 }
 
@@ -120,4 +132,16 @@ func prettyPrint(v map[string]interface{}) (err error) {
 		fmt.Println(string(b))
 	}
 	return
+}
+
+// UploadToGCS uploads file specified by path to Google Cloud Storage Bucket.
+func UploadToGCS(path string) (string, error) {
+	// TODO (Jack, 21/06/2022):
+	return "", nil
+}
+
+// Transcribe runs input path (a GCS Bucket e.g. gs://...) through Google's
+// Speech-To-Text API.
+func Transcribe(path string) {
+	// TODO (Jack, 21/06/2022):
 }
