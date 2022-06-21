@@ -1,10 +1,8 @@
 package audio
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"path/filepath"
 	"strings"
@@ -20,34 +18,31 @@ type FfmpegConfig struct {
 	BitRate      int    `json:"bitRate"`
 }
 
-func Process(in string, config FfmpegConfig) (*Metadata, error) {
-	buf := &bytes.Buffer{}
-
-	fne := in[strings.LastIndex(in, "/")+1:]       // filename w/  extension
-	fn := fne[0 : len(fne)-len(filepath.Ext(fne))] // filename w/o extension
+// Process uses ffmpeg to convert input path's file according to the specified
+// ffmpeg config provided.
+func Process(path string, config FfmpegConfig) (*Metadata, error) {
+	fne := path[strings.LastIndex(path, "/")+1:]
+	fn := fne[0 : len(fne)-len(filepath.Ext(fne))]
 	out := fmt.Sprintf("../data/proccessed/%v.%v", fn, config.OutputFormat)
 
 	fluentffmpeg.NewCommand("").
-		InputPath(in).
+		InputPath(path).
 		AudioChannels(config.NumChannels).
 		AudioRate(config.SampleRate).
 		AudioBitRate(config.BitRate).
-		OutputLogs(buf).
 		OutputFormat(config.OutputFormat).
 		OutputPath(out).
 		Overwrite(true).
 		Run()
 
-	logs, _ := ioutil.ReadAll(buf)
-	fmt.Println(string(logs))
-
-	m, err := ProbeMetadata(in)
+	m, err := ProbeMetadata(path)
 	if err != nil {
 		return &Metadata{}, err
 	}
 	return m, nil
 }
 
+// ProcessBatch concurrently runs Process for a specified slice of input paths.
 func ProcessBatch(in []string, config FfmpegConfig) {
 	// TODO (Jack, 21/06/2022): Switch to output chan of Metadata
 	done := make(chan struct{})
@@ -69,8 +64,9 @@ type Metadata struct {
 	Filename string `json:"filename"`
 }
 
-func ProbeMetadata(in string) (*Metadata, error) {
-	d, err := fluentffmpeg.Probe(in)
+// ProbeMetadata uses a ffmpeg probe to extract music metadata from input path.
+func ProbeMetadata(path string) (*Metadata, error) {
+	d, err := fluentffmpeg.Probe(path)
 	if err != nil {
 		return &Metadata{}, err
 	}
@@ -86,7 +82,7 @@ func ProbeMetadata(in string) (*Metadata, error) {
 		return &Metadata{}, err
 	}
 
-	// Parse Metadata from unmarshalled json
+	// Parse Metadata from un-marshalled json
 	artist, err := j.GetString("format", "tags", "artist")
 	if err != nil {
 		log.Print(err)

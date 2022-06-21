@@ -5,6 +5,7 @@ go 1.18
 require (
 	cloud.google.com/go/speech v1.4.0
 	github.com/Andrew-M-C/go.jsonvalue v1.2.1
+	github.com/gorilla/mux v1.8.0
 	github.com/modfy/fluent-ffmpeg v0.1.0
 	google.golang.org/genproto v0.0.0-20220617124728-180714bec0ad
 )
