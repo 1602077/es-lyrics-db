@@ -1,14 +1,17 @@
 package audio
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"path/filepath"
 	"strings"
 
+	speech "cloud.google.com/go/speech/apiv1"
 	jsonvalue "github.com/Andrew-M-C/go.jsonvalue"
 	fluentffmpeg "github.com/modfy/fluent-ffmpeg"
+	speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
 )
 
 type FfmpegConfig struct {
@@ -126,7 +129,7 @@ func ProbeMetadata(path string) (*Metadata, error) {
 }
 
 // prettyPrints a map[string]interfaces for use in debugging.
-func prettyPrint(v map[string]interface{}) (err error) {
+func PrettyPrint(v map[string]interface{}) (err error) {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err == nil {
 		fmt.Println(string(b))
@@ -142,6 +145,38 @@ func UploadToGCS(path string) (string, error) {
 
 // Transcribe runs input path (a GCS Bucket e.g. gs://...) through Google's
 // Speech-To-Text API.
-func Transcribe(path string) {
+func Transcribe(gsUri string) error {
 	// TODO (Jack, 21/06/2022):
+	ctx := context.Background()
+	client, err := speech.NewClient(ctx)
+	if err != nil {
+		return err
+	}
+
+	req := &speechpb.LongRunningRecognizeRequest{
+		Config: &speechpb.RecognitionConfig{
+			Encoding: speechpb.RecognitionConfig_LINEAR16,
+			// SampleRateHertz: 44100,
+			LanguageCode: "en-GB",
+		},
+		Audio: &speechpb.RecognitionAudio{
+			AudioSource: &speechpb.RecognitionAudio_Uri{Uri: gsUri},
+		},
+	}
+
+	op, err := client.LongRunningRecognize(ctx, req)
+	if err != nil {
+		return err
+	}
+	resp, err := op.Wait(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, result := range resp.Results {
+		for _, alt := range result.Alternatives {
+			fmt.Printf("\"%v\" (confidence=%3f)\n", alt.Transcript, alt.Confidence)
+		}
+	}
+	return nil
 }

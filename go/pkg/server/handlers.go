@@ -61,8 +61,8 @@ func Process(w http.ResponseWriter, r *http.Request) {
 	ac := audio.FfmpegConfig{
 		OutputFormat: "wav",
 		SampleRate:   44100,
-		NumChannels:  2,
-		BitRate:      160,
+		NumChannels:  1,
+		// BitRate:      160,
 	}
 
 	md, err := audio.Process(inputFile, outdir, ac)

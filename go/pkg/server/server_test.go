@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -13,6 +14,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/1602077/es-lyrics-db/pkg/audio"
 	"github.com/1602077/es-lyrics-db/pkg/server"
 )
 
@@ -46,10 +48,24 @@ func TestProcess(t *testing.T) {
 		t.Errorf("incorrect status code: got %v want %v", status, http.StatusOK)
 	}
 
-	expected := `{"artist":"Phoebe Bridgers","album":"Stranger In The Alps","title":"Smoke Signals","track":"1","duration":"324.832656","filename":"../data/uploads/01 Smoke Signals.mp3"}`
+	expMd := audio.Metadata{
+		Artist:      "Phoebe Bridgers",
+		Album:       "Stranger In The Alps",
+		Title:       "Smoke Signals",
+		Track:       "1",
+		Duration:    "324.832656",
+		Filename:    "../data/uploads/01 Smoke Signals.mp3",
+		Processed:   true,
+		Transcribed: false,
+	}
 
-	if rr.Body.String() != expected {
-		t.Errorf("incorrect body: got %v want %v", rr.Body.String(), expected)
+	expected, err := json.Marshal(expMd)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if rr.Body.String() != string(expected) {
+		t.Errorf("incorrect body: got %v\n want %v\n", rr.Body.String(), string(expected))
 	}
 }
 
