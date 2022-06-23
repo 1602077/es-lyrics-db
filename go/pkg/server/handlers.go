@@ -9,17 +9,17 @@ import (
 	"os"
 
 	"github.com/1602077/es-lyrics-db/pkg/audio"
+	jsonvalue "github.com/Andrew-M-C/go.jsonvalue"
 )
 
 // UploadFile posts a file to server inside of ../data/upload.
-func UploadFile(w http.ResponseWriter, r *http.Request) {
+func UploadFile(r *http.Request) error {
 	// Limit uploads to 10 MB
 	r.ParseMultipartForm(10 << 20)
 
 	file, handler, err := r.FormFile("file")
 	if err != nil {
-		log.Printf("err|UploadFile|%s", err)
-		return
+		return err
 	}
 	defer file.Close()
 
@@ -27,25 +27,26 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 
 	dst, err := os.Create(fmt.Sprintf("../data/uploads/%s", handler.Filename))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return err
 	}
 	defer dst.Close()
 
 	if _, err := io.Copy(dst, file); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return err
 	}
 
-	// w.WriteHeader(http.StatusOK)
-	// fmt.Fprintf(w, "File Uploaded Successfully: %s", handler.Filename)
+	return nil
 }
 
 // Process uploads a file specified using the file tag in curl request through
 // calling UploadFile, it then pre-processes the file preparing it for GCP's
 // Text-to-Speech API and writes its metadata to the response.
 func Process(w http.ResponseWriter, r *http.Request) {
-	UploadFile(w, r)
+	if err := UploadFile(r); err != nil {
+		log.Printf("err|Process|UploadFile|%s", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 
 	file, handler, err := r.FormFile("file")
 	if err != nil {
@@ -66,7 +67,10 @@ func Process(w http.ResponseWriter, r *http.Request) {
 	}
 
 	md, err := audio.Process(inputFile, outdir, ac)
-	if err != nil {
+	if err == jsonvalue.ErrNotFound {
+		log.Printf("warn|Process|incomplete parsing of metadata for audio %s", handler.Filename)
+	}
+	if err != nil && err != jsonvalue.ErrNotFound {
 		log.Printf("err|Process|audio.Process|%s", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return

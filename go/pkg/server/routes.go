@@ -18,10 +18,4 @@ var routes = Routes{
 		"/process",
 		Process,
 	},
-	Route{
-		"UploadFile",
-		"POST",
-		"/upload",
-		UploadFile,
-	},
 }

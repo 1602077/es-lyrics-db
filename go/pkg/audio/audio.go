@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"io"
+	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	speech "cloud.google.com/go/speech/apiv1"
+	"cloud.google.com/go/storage"
 	jsonvalue "github.com/Andrew-M-C/go.jsonvalue"
 	fluentffmpeg "github.com/modfy/fluent-ffmpeg"
 	speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
@@ -40,7 +43,7 @@ func Process(path string, dir string, config FfmpegConfig) (*Metadata, error) {
 
 	m, err := ProbeMetadata(path)
 	if err != nil {
-		return &Metadata{}, err
+		return m, err
 	}
 	return m, nil
 }
@@ -86,7 +89,7 @@ func ProbeMetadata(path string) (*Metadata, error) {
 	}
 
 	// Marshal map[string]interface{} into []byte
-	dd, _ := json.Marshal(d)
+	dd, err := json.Marshal(d)
 	if err != nil {
 		return &Metadata{}, err
 	}
@@ -97,25 +100,31 @@ func ProbeMetadata(path string) (*Metadata, error) {
 	}
 
 	// Parse Metadata from un-marshalled json
+	var errTargetNotFound error
+
 	artist, err := j.GetString("format", "tags", "artist")
 	if err != nil {
-		log.Print(err)
+		errTargetNotFound = err
 	}
+
 	album, err := j.GetString("format", "tags", "album")
 	if err != nil {
-		log.Print(err)
+		errTargetNotFound = err
 	}
+
 	title, err := j.GetString("format", "tags", "title")
 	if err != nil {
-		log.Print(err)
+		errTargetNotFound = err
 	}
+
 	track, err := j.GetString("format", "tags", "track")
 	if err != nil {
-		log.Print(err)
+		errTargetNotFound = err
 	}
+
 	duration, err := j.GetString("format", "duration")
 	if err != nil {
-		log.Print(err)
+		errTargetNotFound = err
 	}
 
 	return &Metadata{
@@ -125,7 +134,7 @@ func ProbeMetadata(path string) (*Metadata, error) {
 		Track:     track,
 		Duration:  duration,
 		Processed: true,
-	}, nil
+	}, errTargetNotFound
 }
 
 // prettyPrints a map[string]interfaces for use in debugging.
@@ -138,9 +147,34 @@ func PrettyPrint(v map[string]interface{}) (err error) {
 }
 
 // UploadToGCS uploads file specified by path to Google Cloud Storage Bucket.
-func UploadToGCS(path string) (string, error) {
-	// TODO (Jack, 21/06/2022):
-	return "", nil
+func UploadToGCS(bucketName, filePath string) (string, error) {
+	ctx := context.Background()
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		return "", fmt.Errorf("storage.NewClient: %v", err)
+	}
+	defer client.Close()
+
+	f, err := os.Open(filePath)
+	if err != nil {
+		return "", fmt.Errorf("os.Open: %v", err)
+	}
+	defer f.Close()
+
+	ctx, cancel := context.WithTimeout(ctx, time.Second*120)
+	defer cancel()
+
+	fne := filePath[strings.LastIndex(filePath, "/")+1:]
+
+	wc := client.Bucket(bucketName).Object(fne).NewWriter(ctx)
+	if _, err = io.Copy(wc, f); err != nil {
+		return "", fmt.Errorf("io.Copy: %v", err)
+	}
+	if err := wc.Close(); err != nil {
+		return "", fmt.Errorf("Writer.Close: %v", err)
+	}
+
+	return fmt.Sprintf("gs://%s/%s", bucketName, fne), nil
 }
 
 // Transcribe runs input path (a GCS Bucket e.g. gs://...) through Google's
@@ -179,4 +213,10 @@ func Transcribe(gsUri string) error {
 		}
 	}
 	return nil
+}
+
+// getName parses out the filename without extension from an input path
+func getName(path string) string {
+	fne := path[strings.LastIndex(path, "/")+1:]
+	return fne[0 : len(fne)-len(filepath.Ext(fne))]
 }

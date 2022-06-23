@@ -11,3 +11,4 @@ data/
 bin/
 
 useful-links.md
+.env
