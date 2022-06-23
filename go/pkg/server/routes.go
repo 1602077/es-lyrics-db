@@ -13,9 +13,9 @@ type Routes []Route
 
 var routes = Routes{
 	Route{
-		"Process",
+		"Transcribe",
 		"POST",
-		"/process",
-		Process,
+		"/transcribe",
+		Transcribe,
 	},
 }

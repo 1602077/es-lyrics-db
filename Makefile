@@ -4,14 +4,16 @@ SRC_DIR=go
 
 .DEFAULT_GOAL=help
 
+include .env
+
 build: # compiles go binaries locally
 	cd ${SRC_DIR} && go build -o ../bin/${APP_NAME} ./cmd/main.go
 
-run: env # run application locally
+run: # run application locally
 	cd bin/ && ./${APP_NAME}
 
 env: # load contents of .env file
-	cat .env | xargs
+	export $$(xargs <.env)
 
 help: # shows help message
 	@egrep -h '\s#\s' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?# "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'

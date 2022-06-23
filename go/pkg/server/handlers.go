@@ -10,10 +10,11 @@ import (
 
 	"github.com/1602077/es-lyrics-db/pkg/audio"
 	jsonvalue "github.com/Andrew-M-C/go.jsonvalue"
+	"github.com/joho/godotenv"
 )
 
-// UploadFile posts a file to server inside of ../data/upload.
-func UploadFile(r *http.Request) error {
+// UploadToServer posts a file to server inside of ../data/upload.
+func UploadToServer(r *http.Request) error {
 	// Limit uploads to 10 MB
 	r.ParseMultipartForm(10 << 20)
 
@@ -38,20 +39,17 @@ func UploadFile(r *http.Request) error {
 	return nil
 }
 
-// Process uploads a file specified using the file tag in curl request through
-// calling UploadFile, it then pre-processes the file preparing it for GCP's
-// Text-to-Speech API and writes its metadata to the response.
-func Process(w http.ResponseWriter, r *http.Request) {
-	if err := UploadFile(r); err != nil {
-		log.Printf("err|Process|UploadFile|%s", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
+// Preprocess each file uploaded using UploadToServer using ffmpeg and
+// ffmpegprobe. This prepares the file to be passed to Google's Text-to-Speech
+// API and extracts metadata (artist, album, trackname) from the input file.
+func Preprocess(r *http.Request) (*audio.Metadata, error) {
+	if err := UploadToServer(r); err != nil {
+		return &audio.Metadata{}, err
 	}
 
 	file, handler, err := r.FormFile("file")
 	if err != nil {
-		log.Printf("err|Process|%s", err)
-		return
+		return &audio.Metadata{}, err
 	}
 	defer file.Close()
 
@@ -62,7 +60,7 @@ func Process(w http.ResponseWriter, r *http.Request) {
 	ac := audio.FfmpegConfig{
 		OutputFormat: "wav",
 		SampleRate:   44100,
-		NumChannels:  1,
+		NumChannels:  2,
 		// BitRate:      160,
 	}
 
@@ -71,18 +69,53 @@ func Process(w http.ResponseWriter, r *http.Request) {
 		log.Printf("warn|Process|incomplete parsing of metadata for audio %s", handler.Filename)
 	}
 	if err != nil && err != jsonvalue.ErrNotFound {
-		log.Printf("err|Process|audio.Process|%s", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		return &audio.Metadata{}, err
 	}
 
 	md.Filename = inputFile
 
 	log.Printf("File Processed: %+v\n", handler.Filename)
 
+	return md, nil
+}
+
+// Transcribe calls Google's Text-To-Speech API for the provided file.
+// Each file goes through the following pipeline:
+// UploadToServer -> Preprocess -> UploadToGCS -> Transcribe
+func Transcribe(w http.ResponseWriter, r *http.Request) {
+	var md *audio.Metadata
+	md, err := Preprocess(r)
+	if err != nil {
+		log.Printf("err|Transcribe|UploadFile|%s", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	err = godotenv.Load("../.env")
+	if err != nil {
+		log.Printf("err|godotenv.Load|error opening .env file")
+	}
+
+	gsUri, err := audio.UploadToGCS(os.Getenv("BUCKET_NAME"), md.Filename)
+	// gsUri, err := audio.UploadToGCS("music-testing", md.Filename)
+	if err != nil {
+		log.Printf("err|Transcribe|a.UploadToGCS|%s", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	err = audio.Transcribe(gsUri)
+	if err != nil {
+		log.Printf("err|Transcribe|a.Transcribe|%s", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	md.Transcribed = true
+
 	mdJson, err := json.Marshal(md)
 	if err != nil {
-		log.Printf("err|Process|json.Marshal|%s", err)
+		log.Printf("err|Transcribe|json.Marshal|%s", err)
 		return
 	}
 

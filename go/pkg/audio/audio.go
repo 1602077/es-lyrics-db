@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	speech "cloud.google.com/go/speech/apiv1"
 	"cloud.google.com/go/storage"
 	jsonvalue "github.com/Andrew-M-C/go.jsonvalue"
+	"github.com/joho/godotenv"
 	fluentffmpeg "github.com/modfy/fluent-ffmpeg"
 	speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
 )
@@ -45,6 +47,7 @@ func Process(path string, dir string, config FfmpegConfig) (*Metadata, error) {
 	if err != nil {
 		return m, err
 	}
+
 	return m, nil
 }
 
@@ -137,17 +140,15 @@ func ProbeMetadata(path string) (*Metadata, error) {
 	}, errTargetNotFound
 }
 
-// prettyPrints a map[string]interfaces for use in debugging.
-func PrettyPrint(v map[string]interface{}) (err error) {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err == nil {
-		fmt.Println(string(b))
-	}
-	return
-}
-
 // UploadToGCS uploads file specified by path to Google Cloud Storage Bucket.
 func UploadToGCS(bucketName, filePath string) (string, error) {
+	// Load in GOOGLE_APPLICATION_CREDENTIALS defined in .env
+	err := godotenv.Load("../.env")
+	if err != nil {
+		log.Printf("err|godotenv.Load|error opening .env file")
+	}
+
+	// Create client to write to BucketName with
 	ctx := context.Background()
 	client, err := storage.NewClient(ctx)
 	if err != nil {
@@ -166,6 +167,7 @@ func UploadToGCS(bucketName, filePath string) (string, error) {
 
 	fne := filePath[strings.LastIndex(filePath, "/")+1:]
 
+	// Write file to GCS Bucket
 	wc := client.Bucket(bucketName).Object(fne).NewWriter(ctx)
 	if _, err = io.Copy(wc, f); err != nil {
 		return "", fmt.Errorf("io.Copy: %v", err)
@@ -180,16 +182,18 @@ func UploadToGCS(bucketName, filePath string) (string, error) {
 // Transcribe runs input path (a GCS Bucket e.g. gs://...) through Google's
 // Speech-To-Text API.
 func Transcribe(gsUri string) error {
-	// TODO (Jack, 21/06/2022):
 	ctx := context.Background()
 	client, err := speech.NewClient(ctx)
 	if err != nil {
 		return err
 	}
 
+	// Generate transcription job config
 	req := &speechpb.LongRunningRecognizeRequest{
 		Config: &speechpb.RecognitionConfig{
-			Encoding: speechpb.RecognitionConfig_LINEAR16,
+			AudioChannelCount:                   2,
+			EnableSeparateRecognitionPerChannel: true,
+			Encoding:                            speechpb.RecognitionConfig_LINEAR16,
 			// SampleRateHertz: 44100,
 			LanguageCode: "en-GB",
 		},
@@ -198,6 +202,7 @@ func Transcribe(gsUri string) error {
 		},
 	}
 
+	// Trigger job
 	op, err := client.LongRunningRecognize(ctx, req)
 	if err != nil {
 		return err
@@ -207,16 +212,12 @@ func Transcribe(gsUri string) error {
 		return err
 	}
 
+	// Write transcript to file
+	// TODO (Jack, 23/06/2022): output responses to a file instead
 	for _, result := range resp.Results {
 		for _, alt := range result.Alternatives {
-			fmt.Printf("\"%v\" (confidence=%3f)\n", alt.Transcript, alt.Confidence)
+			log.Printf("\"%v\" (confidence=%3f)\n", alt.Transcript, alt.Confidence)
 		}
 	}
 	return nil
-}
-
-// getName parses out the filename without extension from an input path
-func getName(path string) string {
-	fne := path[strings.LastIndex(path, "/")+1:]
-	return fne[0 : len(fne)-len(filepath.Ext(fne))]
 }
