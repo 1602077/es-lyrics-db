@@ -1,14 +1,7 @@
-.DS_Store
-
-/* service account keys */
+.env
 *.json
-
-/* data */
+.DS_Store
 testdata/
 data/
-
-/* binaries */
 bin/
-
 useful-links.md
-.env
