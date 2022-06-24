@@ -1,8 +1,8 @@
-package server_test
+package server
 
 import (
 	"bytes"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -15,25 +15,15 @@ import (
 	"testing"
 
 	"github.com/1602077/es-lyrics-db/pkg/audio"
-	"github.com/1602077/es-lyrics-db/pkg/server"
 )
 
-func init() {
-	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../..")
-	err := os.Chdir(dir)
-	if err != nil {
-		panic(err)
-	}
-}
-
 func TestTranscribe(t *testing.T) {
-	path, _ := os.Getwd()
-	fmt.Println(path)
+	setup()
+	defer cleanup()
 
 	url := "localhost:8080/process"
 	method := "POST"
-	fn := "../data/01 Smoke Signals.mp3"
+	fn := "../testdata/Smoke Signals.wav"
 
 	req, err := CreateRequest(method, url, fn)
 	if err != nil {
@@ -41,14 +31,15 @@ func TestTranscribe(t *testing.T) {
 	}
 
 	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(server.Transcribe)
+	handler := http.HandlerFunc(Transcribe)
 	handler.ServeHTTP(rr, req)
 
 	if status := rr.Code; status != http.StatusOK {
-		t.Errorf("incorrect status code: got %v want %v", status, http.StatusOK)
+		t.Logf("incorrect status code: got %v want %v", status, http.StatusOK)
+		t.FailNow()
 	}
 
-	expMd := audio.Metadata{
+	exp := audio.Metadata{
 		Artist:      "Phoebe Bridgers",
 		Album:       "Stranger In The Alps",
 		Title:       "Smoke Signals",
@@ -59,13 +50,10 @@ func TestTranscribe(t *testing.T) {
 		Transcribed: false,
 	}
 
-	expected, err := json.Marshal(expMd)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if rr.Body.String() != string(expected) {
-		t.Errorf("incorrect body: got %v\n want %v\n", rr.Body.String(), string(expected))
+	transPath := fmt.Sprintf("../testdata/transcripts/%s/%s/%s.json", exp.Artist, exp.Album, exp.Title)
+	if _, err := os.Stat(transPath); errors.Is(err, os.ErrNotExist) {
+		t.Log(err)
+		t.FailNow()
 	}
 }
 
@@ -100,4 +88,31 @@ func CreateRequest(method, url, filename string) (*http.Request, error) {
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	return req, nil
+}
+
+func init() {
+	_, filename, _, _ := runtime.Caller(0)
+	dir := path.Join(path.Dir(filename), "../..")
+	err := os.Chdir(dir)
+	if err != nil {
+		panic(err)
+	}
+}
+
+var processDir = "../testdata/processed"
+var transcriptDir = "../testdata/transcripts"
+var testDirs = []string{processDir, transcriptDir}
+
+func setup() {
+	for _, d := range testDirs {
+		if _, err := os.Stat(d); os.IsNotExist(err) {
+			os.Mkdir(d, os.ModeDir)
+		}
+	}
+}
+
+func cleanup() {
+	for _, d := range testDirs {
+		os.RemoveAll(d)
+	}
 }

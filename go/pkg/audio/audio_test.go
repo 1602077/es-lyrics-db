@@ -16,65 +16,6 @@ import (
 	"google.golang.org/api/iterator"
 )
 
-func init() {
-	_, filename, _, _ := runtime.Caller(0)
-	dir := path.Join(path.Dir(filename), "../..")
-	err := os.Chdir(dir)
-	if err != nil {
-		panic(err)
-	}
-}
-
-var processDir = "../testdata/processed"
-var transcriptDir = "../testdata/transcripts"
-var testDirs = []string{processDir, transcriptDir}
-
-func setup() {
-	for _, d := range testDirs {
-		if _, err := os.Stat(d); os.IsNotExist(err) {
-			os.Mkdir(d, os.ModeDir)
-		}
-	}
-}
-
-func cleanup() {
-	for _, d := range testDirs {
-		os.RemoveAll(d)
-	}
-}
-
-func bucketCleanup(object string) error {
-	bucket := os.Getenv("TEST_BUCKET_NAME")
-
-	ctx := context.Background()
-	client, err := storage.NewClient(ctx)
-	if err != nil {
-		return fmt.Errorf("storage.NewClient: %v", err)
-	}
-	defer client.Close()
-
-	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
-	defer cancel()
-
-	o := client.Bucket(bucket).Object(object)
-
-	attrs, err := o.Attrs(ctx)
-	if err != nil {
-		return fmt.Errorf("object.Attrs: %v", err)
-	}
-	o = o.If(storage.Conditions{GenerationMatch: attrs.Generation})
-
-	if err := o.Delete(ctx); err != nil {
-		return fmt.Errorf("Object(%q).Delete: %v", object, err)
-	}
-
-	log.Printf("'%s' deleted from bucket '%s' as part of bucketCleanup", object, bucket)
-
-	cleanup()
-
-	return nil
-}
-
 func TestProbeMetadata(t *testing.T) {
 	input := "../testdata/Smoke Signals.mp3"
 
@@ -216,4 +157,63 @@ func TestTranscribeB(t *testing.T) {
 		t.Log(err)
 		t.FailNow()
 	}
+}
+
+func init() {
+	_, filename, _, _ := runtime.Caller(0)
+	dir := path.Join(path.Dir(filename), "../..")
+	err := os.Chdir(dir)
+	if err != nil {
+		panic(err)
+	}
+}
+
+var processDir = "../testdata/processed"
+var transcriptDir = "../testdata/transcripts"
+var testDirs = []string{processDir, transcriptDir}
+
+func setup() {
+	for _, d := range testDirs {
+		if _, err := os.Stat(d); os.IsNotExist(err) {
+			os.Mkdir(d, os.ModeDir)
+		}
+	}
+}
+
+func cleanup() {
+	for _, d := range testDirs {
+		os.RemoveAll(d)
+	}
+}
+
+func bucketCleanup(object string) error {
+	bucket := os.Getenv("TEST_BUCKET_NAME")
+
+	ctx := context.Background()
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		return fmt.Errorf("storage.NewClient: %v", err)
+	}
+	defer client.Close()
+
+	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
+
+	o := client.Bucket(bucket).Object(object)
+
+	attrs, err := o.Attrs(ctx)
+	if err != nil {
+		return fmt.Errorf("object.Attrs: %v", err)
+	}
+	o = o.If(storage.Conditions{GenerationMatch: attrs.Generation})
+
+	if err := o.Delete(ctx); err != nil {
+		return fmt.Errorf("Object(%q).Delete: %v", object, err)
+	}
+
+	log.Printf("'%s' deleted from bucket '%s' as part of bucketCleanup", object, bucket)
+
+	cleanup()
+
+	return nil
 }
