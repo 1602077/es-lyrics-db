@@ -15,8 +15,8 @@ import (
 
 // UploadToServer posts a file to server inside of ../data/upload.
 func UploadToServer(r *http.Request) error {
-	// Limit uploads to 10 MB
-	r.ParseMultipartForm(10 << 20)
+	// Limit uploads to 40 MB
+	r.ParseMultipartForm(40 << 20)
 
 	file, handler, err := r.FormFile("file")
 	if err != nil {
@@ -97,14 +97,13 @@ func Transcribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	gsUri, err := audio.UploadToGCS(os.Getenv("BUCKET_NAME"), md.Filename)
-	// gsUri, err := audio.UploadToGCS("music-testing", md.Filename)
 	if err != nil {
 		log.Printf("err|Transcribe|a.UploadToGCS|%s", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	err = audio.Transcribe(gsUri)
+	transcript, err := audio.Transcribe(gsUri, md)
 	if err != nil {
 		log.Printf("err|Transcribe|a.Transcribe|%s", err)
 		w.WriteHeader(http.StatusBadRequest)
@@ -119,7 +118,11 @@ func Transcribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	response := fmt.Sprintf("[{%v, \"transcript\": %v]", string(mdJson), transcript)
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write(mdJson)
+	w.Write([]byte(response))
+
+	log.Printf("File Transcribed: %+v\n", md.Filename)
 }

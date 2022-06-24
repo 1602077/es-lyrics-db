@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -162,7 +163,7 @@ func UploadToGCS(bucketName, filePath string) (string, error) {
 	}
 	defer f.Close()
 
-	ctx, cancel := context.WithTimeout(ctx, time.Second*120)
+	ctx, cancel := context.WithTimeout(ctx, time.Second*240)
 	defer cancel()
 
 	fne := filePath[strings.LastIndex(filePath, "/")+1:]
@@ -176,16 +177,26 @@ func UploadToGCS(bucketName, filePath string) (string, error) {
 		return "", fmt.Errorf("Writer.Close: %v", err)
 	}
 
+	log.Printf("File Uploaded to GCS: %+v\n", fne)
 	return fmt.Sprintf("gs://%s/%s", bucketName, fne), nil
+}
+
+type Transcript struct {
+	Line       int
+	Time       time.Duration
+	Text       string
+	ChannelTag int32
+	Alternate  int
+	Confidence float32
 }
 
 // Transcribe runs input path (a GCS Bucket e.g. gs://...) through Google's
 // Speech-To-Text API.
-func Transcribe(gsUri string) error {
+func Transcribe(gsUri string, md *Metadata) (string, error) {
 	ctx := context.Background()
 	client, err := speech.NewClient(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// Generate transcription job config
@@ -205,19 +216,53 @@ func Transcribe(gsUri string) error {
 	// Trigger job
 	op, err := client.LongRunningRecognize(ctx, req)
 	if err != nil {
-		return err
+		return "", err
 	}
 	resp, err := op.Wait(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	// Write transcript to file
-	// TODO (Jack, 23/06/2022): output responses to a file instead
-	for _, result := range resp.Results {
-		for _, alt := range result.Alternatives {
-			log.Printf("\"%v\" (confidence=%3f)\n", alt.Transcript, alt.Confidence)
+	// Collect results into JSON
+	var trans [][]*Transcript
+	for i, result := range resp.Results {
+		var t []*Transcript
+		for j, alt := range result.Alternatives {
+			t = append(t, &Transcript{
+				Line:       i,
+				Time:       result.ResultEndTime.AsDuration(),
+				Text:       alt.Transcript,
+				ChannelTag: result.ChannelTag,
+				Alternate:  j,
+				Confidence: alt.Confidence,
+			})
 		}
+		trans = append(trans, t)
 	}
-	return nil
+
+	transJson, _ := json.Marshal(trans)
+	if err != nil {
+		return "", err
+
+	}
+
+	// Create all sub-directories if don't exist
+	dir := fmt.Sprintf("../data/transcripts/%s/%s", md.Artist, md.Album)
+	err = os.MkdirAll(dir, os.ModePerm)
+	if err != nil {
+		log.Println(err)
+	}
+	// Write to File
+	out := fmt.Sprintf("%s/%s.json", dir, md.Title)
+	f, err := os.OpenFile(out, os.O_RDWR|os.O_CREATE, 0755)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	w := bufio.NewWriter(f)
+	w.WriteString(string(transJson))
+	w.Flush()
+
+	return string(transJson[:]), nil
 }

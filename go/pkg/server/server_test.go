@@ -27,7 +27,7 @@ func init() {
 	}
 }
 
-func TestProcess(t *testing.T) {
+func TestTranscribe(t *testing.T) {
 	path, _ := os.Getwd()
 	fmt.Println(path)
 
@@ -41,7 +41,7 @@ func TestProcess(t *testing.T) {
 	}
 
 	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(server.Process)
+	handler := http.HandlerFunc(server.Transcribe)
 	handler.ServeHTTP(rr, req)
 
 	if status := rr.Code; status != http.StatusOK {
