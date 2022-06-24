@@ -28,11 +28,11 @@ type FfmpegConfig struct {
 }
 
 // Process uses ffmpeg to convert input path's file according to the specified
-// ffmpeg config provided saving the processed file into dir.
-func Process(path string, dir string, config FfmpegConfig) (*Metadata, error) {
+// ffmpeg config provided saving the processed file into outDir.
+func Process(path string, outDir string, config FfmpegConfig) (*Metadata, error) {
 	fne := path[strings.LastIndex(path, "/")+1:]
 	fn := fne[0 : len(fne)-len(filepath.Ext(fne))]
-	out := fmt.Sprintf("%s/%s.%s", dir, fn, config.OutputFormat)
+	out := fmt.Sprintf("%s/%s.%s", outDir, fn, config.OutputFormat)
 
 	fluentffmpeg.NewCommand("").
 		InputPath(path).
@@ -48,12 +48,13 @@ func Process(path string, dir string, config FfmpegConfig) (*Metadata, error) {
 	if err != nil {
 		return m, err
 	}
-
+	m.Filename = out
 	return m, nil
 }
 
 // ProcessBatch concurrently runs Process for a specified slice of input paths.
 func ProcessBatch(inputFiles []string, dir string, config FfmpegConfig) (Tracks, error) {
+	// TODO (Jack, 24/06/2022): Refactor to walk through an input directory.
 	ch := make(chan *Metadata)
 	errs := make(chan error, 1)
 	for _, s := range inputFiles {
@@ -192,7 +193,7 @@ type Transcript struct {
 
 // Transcribe runs input path (a GCS Bucket e.g. gs://...) through Google's
 // Speech-To-Text API.
-func Transcribe(gsUri string, md *Metadata) (string, error) {
+func Transcribe(gsUri string, md *Metadata, outDir string) (string, error) {
 	ctx := context.Background()
 	client, err := speech.NewClient(ctx)
 	if err != nil {
@@ -247,7 +248,8 @@ func Transcribe(gsUri string, md *Metadata) (string, error) {
 	}
 
 	// Create all sub-directories if don't exist
-	dir := fmt.Sprintf("../data/transcripts/%s/%s", md.Artist, md.Album)
+	// dir := fmt.Sprintf("../data/transcripts/%s/%s", md.Artist, md.Album)
+	dir := fmt.Sprintf("%s/transcripts/%s/%s", outDir, md.Artist, md.Album)
 	err = os.MkdirAll(dir, os.ModePerm)
 	if err != nil {
 		log.Println(err)

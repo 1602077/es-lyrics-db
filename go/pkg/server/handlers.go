@@ -103,7 +103,7 @@ func Transcribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	transcript, err := audio.Transcribe(gsUri, md)
+	transcript, err := audio.Transcribe(gsUri, md, "../data")
 	if err != nil {
 		log.Printf("err|Transcribe|a.Transcribe|%s", err)
 		w.WriteHeader(http.StatusBadRequest)
