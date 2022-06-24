@@ -1,4 +1,5 @@
 .env
+.env.docker
 *.json
 .DS_Store
 testdata/

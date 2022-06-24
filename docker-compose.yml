@@ -1,0 +1,13 @@
+version: "3.9"
+services:
+  server:
+    container_name: go-transcribe
+    tty: true
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - es-transcripts:/app/data/
+volumes:
+  es-transcripts:
+    name: es-transcripts
