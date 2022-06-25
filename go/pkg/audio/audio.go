@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	speech "cloud.google.com/go/speech/apiv1"
@@ -52,25 +53,40 @@ func Process(path string, outDir string, config FfmpegConfig) (*Metadata, error)
 	return m, nil
 }
 
+type Result struct {
+	Metadata *Metadata
+	Err      error
+}
+
 // ProcessBatch concurrently runs Process for a specified slice of input paths.
-func ProcessBatch(inputFiles []string, dir string, config FfmpegConfig) (Tracks, error) {
-	// TODO (Jack, 24/06/2022): Refactor to walk through an input directory.
-	ch := make(chan *Metadata)
-	errs := make(chan error, 1)
-	for _, s := range inputFiles {
-		go func(s, dir string, cfg FfmpegConfig) {
-			m, err := Process(s, dir, cfg)
-			errs <- err
-			ch <- m
-		}(s, dir, config)
+func ProcessBatch(inDir string, outDir string, config FfmpegConfig) chan Result {
+	// Get all files in directory
+	var inputFiles []string
+	files, err := filepath.Glob(inDir + "*.*")
+	if err != nil {
+		log.Println(err)
 	}
 
-	var tracks Tracks
-	for range inputFiles {
-		m := <-ch
-		tracks = append(tracks, m)
+	inputFiles = append(inputFiles, files...)
+
+	resultStream := make(chan Result, len(inputFiles))
+	var wg sync.WaitGroup
+	wg.Add(len(inputFiles))
+
+	for _, s := range inputFiles {
+		go func(s, outDir string, cfg FfmpegConfig) {
+			defer wg.Done()
+			m, err := Process(s, outDir, cfg)
+			resultStream <- Result{m, err}
+		}(s, outDir, config)
 	}
-	return tracks, <-errs
+
+	go func() {
+		wg.Wait()
+		close(resultStream)
+	}()
+
+	return resultStream
 }
 
 type Metadata struct {

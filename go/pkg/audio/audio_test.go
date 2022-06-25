@@ -16,6 +16,27 @@ import (
 	"google.golang.org/api/iterator"
 )
 
+var smokeSig = &Metadata{
+	Artist:      "Phoebe Bridgers",
+	Album:       "Stranger In The Alps",
+	Title:       "Smoke Signals",
+	Track:       "1",
+	Duration:    "324.832656",
+	Filename:    "../testdata/processed/Smoke Signals.wav",
+	Processed:   true,
+	Transcribed: false,
+}
+var nightGowns = &Metadata{
+	Artist:      "TomMisch feat. Loyle Carner",
+	Album:       "Beat Tape 2",
+	Title:       "Nightgowns",
+	Track:       "3/12",
+	Duration:    "166.191020",
+	Filename:    "../testdata/processed/Nightgowns.wav",
+	Processed:   true,
+	Transcribed: false,
+}
+
 func TestProbeMetadata(t *testing.T) {
 	input := "../testdata/Smoke Signals.mp3"
 
@@ -24,16 +45,8 @@ func TestProbeMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expected := &Metadata{
-		Artist:      "Phoebe Bridgers",
-		Album:       "Stranger In The Alps",
-		Title:       "Smoke Signals",
-		Track:       "1",
-		Duration:    "324.832656",
-		Filename:    "",
-		Processed:   true,
-		Transcribed: false,
-	}
+	expected := smokeSig
+	expected.Filename = ""
 
 	if !reflect.DeepEqual(actual, expected) {
 		t.Fatalf("Probe(%s): got: %+v, expected: %+v", input, actual, expected)
@@ -59,16 +72,8 @@ func TestProcess(t *testing.T) {
 		t.FailNow()
 	}
 
-	expected := &Metadata{
-		Artist:      "Phoebe Bridgers",
-		Album:       "Stranger In The Alps",
-		Title:       "Smoke Signals",
-		Track:       "1",
-		Duration:    "324.832656",
-		Filename:    "../testdata/processed/Smoke Signals.wav",
-		Processed:   true,
-		Transcribed: false,
-	}
+	expected := smokeSig
+	expected.Filename = ""
 
 	if !reflect.DeepEqual(actual, expected) {
 		t.Logf("Process(%s): got: %+v, expected: %+v", input, actual, expected)
@@ -79,6 +84,34 @@ func TestProcess(t *testing.T) {
 		t.Logf("ffmpeg output not found: processed file does not exist.")
 		t.FailNow()
 	}
+}
+
+func TestProcessBatch(t *testing.T) {
+	setup()
+	defer cleanup()
+
+	inDir := "../testdata/"
+	outDir := "../testdata/processed"
+	config := FfmpegConfig{
+		OutputFormat: "wav",
+		SampleRate:   44100,
+		NumChannels:  2,
+	}
+
+	rr := ProcessBatch(inDir, outDir, config)
+
+	// Read chan result into metadata (unblocks channel)
+	for range rr {
+		<-rr
+	}
+
+	for _, f := range []*Metadata{smokeSig, nightGowns} {
+		if _, err := os.Stat(f.Filename); errors.Is(err, os.ErrNotExist) {
+			t.Logf("Processed output not found: %s.", f.Filename)
+			t.FailNow()
+		}
+	}
+
 }
 
 func TestUploadToGCS(t *testing.T) {
